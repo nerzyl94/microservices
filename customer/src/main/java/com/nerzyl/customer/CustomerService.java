@@ -1,14 +1,17 @@
 package com.nerzyl.customer;
 
+import com.nerzyl.amqp.RabbitMQMessageProducer;
 import com.nerzyl.clients.fraud.FraudCheckResponse;
 import com.nerzyl.clients.fraud.FraudClient;
-import com.nerzyl.clients.notification.NotificationClient;
 import com.nerzyl.clients.notification.NotificationRequest;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
 @Service
-public record CustomerService(CustomerRepository repository, NotificationClient notificationClient, FraudClient fraudClient) {
+public record CustomerService(
+        CustomerRepository repository,
+        FraudClient fraudClient,
+        RabbitMQMessageProducer messageProducer
+) {
 
     public void registerCustomer(CustomerRegistrationRequest request) {
         Customer customer = Customer.builder()
@@ -23,13 +26,17 @@ public record CustomerService(CustomerRepository repository, NotificationClient 
             throw new IllegalStateException("fraudster");
         }
 
-        notificationClient.sendNotification(
-                new NotificationRequest(
-                        customer.getId(),
-                        customer.getEmail(),
-                        String.format("Hi %s, welcome to our service...",
-                                customer.getFirstName())
-                )
+        NotificationRequest notificationRequest = new NotificationRequest(
+                customer.getId(),
+                customer.getEmail(),
+                String.format("Hi %s, welcome to our service...",
+                        customer.getFirstName())
+        );
+
+        messageProducer.publish(
+                notificationRequest,
+                "internal.exchange",
+                "internal.notification.routing-key"
         );
     }
 }
